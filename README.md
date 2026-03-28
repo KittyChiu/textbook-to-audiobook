@@ -132,12 +132,11 @@ Edit constants at the top of `ssml_to_mp3.py`:
 The pipeline assumes chapter files follow this pattern:
 
 ```
-ch01-slug-name.qmd  →  ch01-slug-name.ssml  →  ch01-slug-name.mp3
+my-chapter.qmd  →  my-chapter.ssml  →  my-chapter.mp3
 ```
 
-- Files starting with `ch{NN}` get a "Chapter N. Title" spoken header and ID3 title.
-- Files starting with `00-` are treated as a preface.
-- All other files use their filename as the title.
+- Titles are derived from the filename: hyphens become spaces and each word is title-cased (e.g. `01-intro-topic.qmd` → "01 Intro Topic").
+- Acronyms listed in `TITLE_ACRONYMS` are preserved (e.g. "Sdlc" → "SDLC").
 - Track numbers are assigned by sorted file order (1-based).
 
 ## Quick start for a new project

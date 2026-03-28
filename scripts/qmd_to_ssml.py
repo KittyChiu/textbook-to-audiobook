@@ -376,13 +376,7 @@ def convert_chapter(repo_root: Path, qmd_path: str) -> tuple[str, str]:
     # Keep output filename aligned with source filename
     output_name = f"{Path(qmd_path).stem}.ssml"
 
-    # Determine chapter number from filename
-    ch_match = re.search(r"ch(\d+)", qmd_path)
-    if ch_match:
-        ch_num = int(ch_match.group(1))
-        chapter_title = f"Chapter {ch_num}. {title}"
-    else:
-        chapter_title = title
+    chapter_title = title
 
     elements = process_body(body)
     ssml = elements_to_ssml(elements, chapter_title)

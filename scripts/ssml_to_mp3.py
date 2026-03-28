@@ -350,28 +350,12 @@ def write_id3_tags(mp3_path: Path, title: str, track_number: int, total_tracks: 
 
 
 def _title_from_ssml(ssml_path: Path) -> str:
-    """Extract a human-readable chapter title from the SSML filename."""
-    stem = ssml_path.stem 
-    def fix_title(s: str) -> str:
-        t = s.replace("-", " ").title()
-        for wrong, right in TITLE_ACRONYMS.items():
-            t = t.replace(wrong, right)
-        return t
-
-    m = re.match(r"ch(\d+)-(.*)", stem)
-    if m:
-        num = int(m.group(1))
-        slug = fix_title(m.group(2))
-        return f"Chapter {num}. {slug}"
-    if stem.startswith("00-"):
-        return fix_title(stem[3:])
-    return fix_title(stem)
-
-
-def _track_number_from_ssml(ssml_path: Path) -> int:
-    """Extract track number: preface=0, ch01=1, etc."""
-    m = re.search(r"ch(\d+)", ssml_path.stem)
-    return int(m.group(1)) if m else 0
+    """Extract a human-readable title from the SSML filename."""
+    stem = ssml_path.stem
+    t = stem.replace("-", " ").title()
+    for wrong, right in TITLE_ACRONYMS.items():
+        t = t.replace(wrong, right)
+    return t
 
 
 def process_file(
