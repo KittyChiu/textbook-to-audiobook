@@ -80,6 +80,12 @@ python3 scripts/ssml_to_mp3.py ssml/ch01.ssml  # one file
 python3 scripts/ssml_to_mp3.py -o output/   # custom output directory
 ```
 
+If you do not already have `AZURE_TTS_KEY` and `AZURE_TTS_REGION`, create an
+Azure Speech resource and then copy the key and region from the resource page in
+Azure Portal:
+
+- https://learn.microsoft.com/azure/ai-services/speech-service/get-started-text-to-speech?pivots=programming-language-rest
+
 Reads `.ssml` files, splits large documents into API-safe chunks (≤ 5 KB),
 calls Azure TTS, concatenates audio, and writes ID3-tagged MP3 files to `mp3/`.
 

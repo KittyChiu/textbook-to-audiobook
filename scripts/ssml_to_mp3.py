@@ -6,6 +6,9 @@ Usage (run from repo root):
     export AZURE_TTS_KEY='your-subscription-key'
     export AZURE_TTS_REGION='australiaeast'
 
+    # To create the Speech resource and find the key/region in Azure Portal:
+    # https://learn.microsoft.com/azure/ai-services/speech-service/get-started-text-to-speech?pivots=programming-language-rest
+
     python scripts/ssml_to_mp3.py                                # all files
     python scripts/ssml_to_mp3.py ssml/ch01.ssml  # one file
     python scripts/ssml_to_mp3.py --dry-run                      # preview only
