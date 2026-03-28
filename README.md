@@ -1,5 +1,7 @@
 # QMD-to-Audiobook Pipeline
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Convert Quarto (`.qmd`) chapters into an audiobook via Azure Text-To-Speech.
 
 ## Pipeline
@@ -13,7 +15,12 @@ qmd/*.qmd  ──►  ssml/*.ssml  ──►  mp3/*.mp3
 
 ```
 project-root/
-├── README.md              # README
+├── README.md              # This file
+├── LICENSE                # MIT License
+├── CODEOWNERS             # GitHub code-ownership rules
+├── CODE_OF_CONDUCT.md     # Contributor Covenant
+├── CONTRIBUTING.md        # How to contribute
+├── SECURITY.md            # Vulnerability reporting policy
 ├── index.qmd              # Extra source file (e.g. preface)
 ├── qmd/                   # Quarto source chapters (*.qmd)
 │   ├── ch01-*.qmd
