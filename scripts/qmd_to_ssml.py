@@ -1,36 +1,33 @@
 #!/usr/bin/env python3
-"""Convert Quarto (.qmd) handbook chapters to SSML for Azure Text-To-Speech.
+"""Convert Quarto (.qmd) chapters to SSML for Azure Text-To-Speech.
 
 Usage (run from repo root):
 
     python3 scripts/qmd_to_ssml.py          # generate all SSML files
     python3 scripts/ssml_to_mp3.py           # then synthesise MP3 audio
 
-Pipeline: handbook/*.qmd  ->  ssml/*.ssml  ->  mp3/*.mp3
+Pipeline: qmd/*.qmd  ->  ssml/*.ssml  ->  mp3/*.mp3
 
 Discovers all .qmd files in INPUT_DIR plus EXTRA_TEXT_FILES, parses Markdown
 and YAML frontmatter, and writes one .ssml file per chapter to OUTPUT_DIR.
 
-Constants (edit at the top of this file):
-
-    VOICE_NAME       Azure Neural voice (default: "en-AU-WilliamNeural")
-    SSML_LANG        BCP-47 language tag (default: "en-AU")
-    INPUT_DIR        Source directory (default: "handbook")
-    OUTPUT_DIR       Output directory, created if missing (default: "ssml")
-    EXTRA_TEXT_FILES  Extra sources outside INPUT_DIR (default: ["index.qmd"])
-    BREAK_TIMINGS    Pause durations (ms) around headings, tables, lists, etc.
+Configuration is loaded from `.env` / process environment via `scripts/config.py`.
+Use CLI flags to override stage directories for one-off runs.
 """
 
+import argparse
 import re
 import sys
 import html
 from pathlib import Path
 
-VOICE_NAME = "en-AU-WilliamNeural"
-SSML_LANG = "en-AU"
-INPUT_DIR = "handbook"
+from config import ConfigError, load_qmd_to_ssml_settings
+
+VOICE_NAME = ""
+SSML_LANG = ""
+INPUT_DIR = ""
 INPUT_FILE_EXT = ".qmd"
-OUTPUT_DIR = "ssml"
+OUTPUT_DIR = ""
 BREAK_TIMINGS = {
     "hr": "800ms",
     "h1_before": "1000ms",
@@ -46,7 +43,7 @@ BREAK_TIMINGS = {
     "list_item_after": "300ms",
     "chapter_title_after": "1000ms",
 }
-EXTRA_TEXT_FILES = ["index.qmd"]
+EXTRA_TEXT_FILES = []
 
 def discover_chapters(repo_root: Path) -> list[str]:
     """Build chapter list from INPUT_DIR/*{INPUT_FILE_EXT} (alphanumeric order)."""
@@ -385,6 +382,25 @@ def convert_chapter(repo_root: Path, qmd_path: str) -> tuple[str, str]:
 
 
 def main():
+    global INPUT_DIR, OUTPUT_DIR, SSML_LANG, VOICE_NAME, EXTRA_TEXT_FILES
+
+    parser = argparse.ArgumentParser(description="Generate SSML from QMD chapters")
+    parser.add_argument("--input-dir", help="Directory containing source QMD files")
+    parser.add_argument("--output-dir", help="Directory for generated SSML files")
+    args = parser.parse_args()
+
+    try:
+        settings = load_qmd_to_ssml_settings()
+    except ConfigError as exc:
+        print(f"ERROR: {exc}")
+        sys.exit(1)
+
+    INPUT_DIR = args.input_dir or settings.input_dir
+    OUTPUT_DIR = args.output_dir or settings.output_dir
+    SSML_LANG = settings.ssml_lang
+    VOICE_NAME = settings.voice_name
+    EXTRA_TEXT_FILES = settings.extra_text_files
+
     repo_root = Path(__file__).resolve().parent.parent
     output_dir = repo_root / OUTPUT_DIR
     output_dir.mkdir(exist_ok=True)

@@ -2,18 +2,18 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Convert Quarto (`.qmd`) chapters into an audiobook via Azure Text-To-Speech.
+Convert Markdown (`.md`) chapters into an audiobook via Quarto (`.qmd`) and Azure Text-To-Speech.
 
 ## Pipeline
 
-```
-qmd/*.qmd  ──►  ssml/*.ssml  ──►  mp3/*.mp3
-                 qmd_to_ssml.py    ssml_to_mp3.py
+```text
+markdown/*.md  ──►  qmd/*.qmd  ──►  ssml/*.ssml  ──►  mp3/*.mp3
+                 markdown_to_qmd.py   qmd_to_ssml.py    ssml_to_mp3.py
 ```
 
 ## Folder structure
 
-```
+```text
 project-root/
 ├── README.md              # This file
 ├── LICENSE                # MIT License
@@ -21,16 +21,20 @@ project-root/
 ├── CODE_OF_CONDUCT.md     # Contributor Covenant
 ├── CONTRIBUTING.md        # How to contribute
 ├── SECURITY.md            # Vulnerability reporting policy
-├── index.qmd              # Extra source file (e.g. preface)
+├── markdown/              # Source chapters (*.md)
+│   ├── Chapter 1.md
+│   ├── Chapter 2.md
+│   └── ...
 ├── qmd/                   # Quarto source chapters (*.qmd)
-│   ├── ch01-*.qmd
-│   ├── ch02-*.qmd
+│   ├── chapter-1.qmd
+│   ├── chapter-2.qmd
 │   └── ...
 ├── ssml/                  # Generated SSML (one per chapter)
 ├── mp3/                   # Generated MP3 audiobook files
 └── scripts/
-    ├── qmd_to_ssml.py     # Step 1: Markdown → SSML
-    └── ssml_to_mp3.py     # Step 2: SSML → MP3 via Azure TTS
+    ├── markdown_to_qmd.py # Step 1: Markdown → QMD
+    ├── qmd_to_ssml.py     # Step 2: QMD → SSML
+    └── ssml_to_mp3.py     # Step 3: SSML → MP3 via Azure TTS
 ```
 
 ## Prerequisites
@@ -44,94 +48,88 @@ Optional (for macOS with framework Python):
 pip install certifi
 ```
 
-## Step 1 — Generate SSML from QMD
+## Configuration
+
+1. Copy `.env.example` to `.env`.
+2. Review the sectioned config keys in `.env`.
+3. Set real Azure credentials in `.env` for non-dry runs.
+
+All scripts load configuration from `.env` and support CLI directory overrides.
+Config precedence is:
+
+1. CLI flags
+2. `.env` or process environment
+
+## Step 1 — Generate QMD from Markdown
+
+```bash
+python3 scripts/markdown_to_qmd.py
+```
+
+Converts top-level `.md` files in `markdown/` to slugified `.qmd` files in `qmd/`,
+adds frontmatter title from the source filename, and normalizes body formatting.
+
+CLI options:
+
+```bash
+python3 scripts/markdown_to_qmd.py --overwrite
+python3 scripts/markdown_to_qmd.py --input-dir markdown --output-dir qmd
+```
+
+## Step 2 — Generate SSML from QMD
 
 ```bash
 python3 scripts/qmd_to_ssml.py
+python3 scripts/qmd_to_ssml.py --input-dir qmd --output-dir ssml
 ```
 
-Discovers all `.qmd` files in `qmd/` (plus any extras like `index.qmd`),
+Discovers all `.qmd` files in `qmd/` (plus any configured extras),
 strips code blocks, tables, and Quarto directives, and writes one `.ssml` file
 per chapter to `ssml/`.
 
-### Configuration
+QMD-to-SSML keys are configured in `.env` under:
 
-Edit constants at the top of `qmd_to_ssml.py`:
+- `QMD_TO_SSML_INPUT_DIR`
+- `QMD_TO_SSML_OUTPUT_DIR`
+- `QMD_TO_SSML_EXTRA_TEXT_FILES`
+- `SHARED_SSML_LANG`
+- `SHARED_VOICE_NAME`
 
-| Constant | Default | Purpose |
-|----------|---------|---------|
-| `VOICE_NAME` | `en-AU-WilliamNeural` | Azure Neural voice written into SSML |
-| `SSML_LANG` | `en-AU` | BCP-47 language tag |
-| `INPUT_DIR` | `qmd` | Directory containing `.qmd` source files |
-| `INPUT_FILE_EXT` | `.qmd` | File extension to glob |
-| `OUTPUT_DIR` | `ssml` | Output directory (created if missing) |
-| `EXTRA_TEXT_FILES` | `["index.qmd"]` | Additional files outside `INPUT_DIR` |
-| `BREAK_TIMINGS` | *(see source)* | Pause durations around headings, tables, lists |
-
-### Adapting for a new project
-
-1. Set `INPUT_DIR` to your content directory.
-2. Set `EXTRA_TEXT_FILES` to any files outside that directory (e.g. a preface).
-3. Choose a [voice](https://learn.microsoft.com/azure/ai-services/speech-service/language-support) and set `VOICE_NAME` / `SSML_LANG`.
-4. Tune `BREAK_TIMINGS` for your content style.
-
-## Step 2 — Synthesise MP3 from SSML
+## Step 3 — Synthesise MP3 from SSML
 
 ```bash
-export AZURE_TTS_KEY='your-subscription-key'
-export AZURE_TTS_REGION='australiaeast'
-
 python3 scripts/ssml_to_mp3.py              # all files
 python3 scripts/ssml_to_mp3.py --dry-run    # preview only (no API calls)
 python3 scripts/ssml_to_mp3.py ssml/ch01.ssml  # one file
-python3 scripts/ssml_to_mp3.py -o output/   # custom output directory
+python3 scripts/ssml_to_mp3.py --output-dir output/   # custom output directory
 ```
 
 If you do not already have `AZURE_TTS_KEY` and `AZURE_TTS_REGION`, create an
 Azure Speech resource and then copy the key and region from the resource page in
 Azure Portal:
 
-- https://learn.microsoft.com/azure/ai-services/speech-service/get-started-text-to-speech?pivots=programming-language-rest
+- [Azure Text to Speech quickstart](https://learn.microsoft.com/azure/ai-services/speech-service/get-started-text-to-speech?pivots=programming-language-rest)
 
 Reads `.ssml` files, splits large documents into API-safe chunks (≤ 5 KB),
 calls Azure TTS, concatenates audio, and writes ID3-tagged MP3 files to `mp3/`.
 
-### Configuration
+SSML-to-MP3 keys are configured in `.env` under:
 
-Edit constants at the top of `ssml_to_mp3.py`:
-
-| Constant | Default | Purpose |
-|----------|---------|---------|
-| `ALBUM` | `Awesome Book` | ID3 album tag |
-| `ARTIST` | `Joe Bob` | ID3 artist tag |
-| `INPUT_DIR` | `ssml` | Directory containing `.ssml` files |
-| `OUTPUT_DIR` | `mp3` | Output directory (created if missing) |
-| `OUTPUT_FORMAT` | `audio-48khz-192kbitrate-mono-mp3` | Azure TTS audio format |
-| `USER_AGENT` | `some-user-tts` | HTTP User-Agent header |
-| `MAX_CHUNK_CHARS` | `5000` | Max UTF-8 bytes per API request |
-| `SSML_LANG` | `en-AU` | Fallback language tag (if not in SSML) |
-| `VOICE_NAME` | `en-AU-WilliamNeural` | Fallback voice (if not in SSML) |
-| `TITLE_ACRONYMS` | `{"Sdlc": "SDLC", ...}` | Words to keep uppercase in track titles |
-
-### Environment variables
-
-| Variable | Required | Purpose |
-|----------|----------|---------|
-| `AZURE_TTS_KEY` | Yes | Azure Speech Services subscription key |
-| `AZURE_TTS_REGION` | Yes | Azure region (e.g. `australiaeast`) |
-
-### Adapting for a new project
-
-1. Set `ALBUM` and `ARTIST` to your book metadata.
-2. Set `USER_AGENT` to your project name.
-3. Set `TITLE_ACRONYMS` to domain-specific terms that should stay uppercase.
-4. Adjust `OUTPUT_FORMAT` if you need a different bitrate or codec.
+- `SSML_TO_MP3_INPUT_DIR`
+- `SSML_TO_MP3_OUTPUT_DIR`
+- `SSML_TO_MP3_ALBUM`
+- `SSML_TO_MP3_ARTIST`
+- `SSML_TO_MP3_USER_AGENT`
+- `SSML_TO_MP3_MAX_CHUNK_CHARS`
+- `SSML_TO_MP3_TITLE_ACRONYMS`
+- `AZURE_TTS_KEY` (required for non-dry runs)
+- `AZURE_TTS_REGION` (required for non-dry runs)
 
 ## Naming conventions
 
 The pipeline assumes chapter files follow this pattern:
 
-```
+```text
 my-chapter.qmd  →  my-chapter.ssml  →  my-chapter.mp3
 ```
 
@@ -144,19 +142,19 @@ my-chapter.qmd  →  my-chapter.ssml  →  my-chapter.mp3
 ```bash
 # 1. Copy the scripts
 mkdir -p my-book/scripts
-cp scripts/qmd_to_ssml.py scripts/ssml_to_mp3.py my-book/scripts/
+cp scripts/markdown_to_qmd.py scripts/qmd_to_ssml.py scripts/ssml_to_mp3.py my-book/scripts/
 
 # 2. Add your content
 mkdir my-book/chapters
-# ... add your .qmd files ...
+# ... add your .md files ...
 
-# 3. Edit constants in both scripts
-#    - qmd_to_ssml.py: INPUT_DIR, VOICE_NAME, EXTRA_TEXT_FILES
-#    - ssml_to_mp3.py: ALBUM, ARTIST, USER_AGENT, TITLE_ACRONYMS
+# 3. Configure .env values
+cp .env.example .env
+# edit .env as needed
 
 # 4. Run the pipeline
 cd my-book
+python3 scripts/markdown_to_qmd.py
 python3 scripts/qmd_to_ssml.py
-export AZURE_TTS_KEY='...' AZURE_TTS_REGION='...'
 python3 scripts/ssml_to_mp3.py
 ```

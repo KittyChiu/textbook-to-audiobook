@@ -3,6 +3,8 @@
 
 Usage (run from repo root):
 
+    # Create .env from .env.example and set your Azure credentials there.
+    # Or export these values in your shell for one-off runs:
     export AZURE_TTS_KEY='your-subscription-key'
     export AZURE_TTS_REGION='australiaeast'
 
@@ -13,27 +15,16 @@ Usage (run from repo root):
     python scripts/ssml_to_mp3.py ssml/ch01.ssml  # one file
     python scripts/ssml_to_mp3.py --dry-run                      # preview only
 
-Pipeline: handbook/*.qmd  ->  ssml/*.ssml  ->  mp3/*.mp3
+Pipeline: qmd/*.qmd  ->  ssml/*.ssml  ->  mp3/*.mp3
                               (qmd_to_ssml.py)   (this script)
 
 Reads SSML files from ssml/, splits large documents into API-safe chunks,
 calls Azure TTS, concatenates the audio, and writes ID3-tagged MP3s to mp3/.
 
-Constants (edit at the top of this file):
-
-    ALBUM            ID3 album tag (default: "Awesome Book")
-    ARTIST           ID3 artist tag (default: "Mystery Author")
-    INPUT_DIR        Directory containing .ssml source files (default: "ssml")
-    OUTPUT_DIR       Directory for generated .mp3 files (default: "mp3")
-    OUTPUT_FORMAT    Azure TTS audio format (default: "audio-48khz-192kbitrate-mono-mp3")
-    USER_AGENT       HTTP User-Agent sent to Azure TTS API
-    MAX_CHUNK_CHARS  Max UTF-8 bytes per TTS request (default: 5000)
-    SSML_LANG        Fallback BCP-47 language tag (default: "en-AU")
-    VOICE_NAME       Fallback Azure Neural voice (default: "en-AU-WilliamNeural")
-    TITLE_ACRONYMS   Words to keep uppercase in generated track titles
+Configuration is loaded from `.env` / process environment via `scripts/config.py`.
+Use CLI flags to override input and output directories for one-off runs.
 """
 
-import os
 import re
 import ssl
 import struct
@@ -45,21 +36,23 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
-ALBUM = "Awesome Book"
-ARTIST = "Mystery Author"
-INPUT_DIR = "ssml"
-OUTPUT_DIR = "mp3"
+from config import ConfigError, load_ssml_to_mp3_settings
+
+ALBUM = ""
+ARTIST = ""
+INPUT_DIR = ""
+OUTPUT_DIR = ""
 OUTPUT_FORMAT = "audio-48khz-192kbitrate-mono-mp3"
-USER_AGENT = "some-user-tts"
-SSML_LANG = "en-AU"
-VOICE_NAME = "en-AU-WilliamNeural"
-TITLE_ACRONYMS = {"Sdlc": "SDLC", "Ai": "AI", "Apm": "APM", "Prose": "PROSE"}
+USER_AGENT = ""
+SSML_LANG = ""
+VOICE_NAME = ""
+TITLE_ACRONYMS: dict[str, str] = {}
 
 # Azure TTS limits: 60,000 UTF-8 bytes per request, 10 min audio output.
 # Observed rate: ~1,000 SSML chars/min of speech (tags + entities inflate
 # char count well above spoken word count). 5,000 chars ≈ 5 min audio,
 # giving safe headroom below the 10-min audio ceiling.
-MAX_CHUNK_CHARS = 5_000
+MAX_CHUNK_CHARS = 0
 
 
 def _build_ssl_context() -> ssl.SSLContext:
@@ -80,21 +73,6 @@ def _build_ssl_context() -> ssl.SSLContext:
 SSL_CONTEXT = _build_ssl_context()
 
 
-def get_config() -> tuple[str, str]:
-    """Read Azure TTS credentials from environment."""
-    key = os.environ.get("AZURE_TTS_KEY", "")
-    region = os.environ.get("AZURE_TTS_REGION", "")
-    if not key:
-        print("ERROR: Set AZURE_TTS_KEY environment variable.")
-        print("  export AZURE_TTS_KEY='your-subscription-key'")
-        sys.exit(1)
-    if not region:
-        print("ERROR: Set AZURE_TTS_REGION environment variable.")
-        print("  export AZURE_TTS_REGION='australiaeast'")
-        sys.exit(1)
-    return key, region
-
-
 def fetch_access_token(key: str, region: str) -> str:
     """Exchange subscription key for a short-lived access token."""
     url = f"https://{region}.api.cognitive.microsoft.com/sts/v1.0/issueToken"
@@ -105,11 +83,14 @@ def fetch_access_token(key: str, region: str) -> str:
         return resp.read().decode("utf-8")
 
 
-def split_ssml_into_chunks(ssml: str, max_chars: int = MAX_CHUNK_CHARS) -> list[str]:
+def split_ssml_into_chunks(ssml: str, max_chars: int | None = None) -> list[str]:
     """Split a large SSML document into smaller chunks at paragraph boundaries.
 
     Each chunk is a complete <speak><voice>...</voice></speak> document.
     """
+    if max_chars is None:
+        max_chars = MAX_CHUNK_CHARS
+
     if len(ssml.encode("utf-8")) <= max_chars:
         return [ssml]
 
@@ -411,15 +392,40 @@ def process_file(
 
 
 def main():
+    global INPUT_DIR, OUTPUT_DIR, ALBUM, ARTIST, USER_AGENT, SSML_LANG, VOICE_NAME, TITLE_ACRONYMS, MAX_CHUNK_CHARS
+
     parser = argparse.ArgumentParser(description="Generate MP3 from SSML via Azure TTS")
     parser.add_argument("files", nargs="*", help="Specific SSML files to convert (default: all in ssml/)")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be generated without calling API")
-    parser.add_argument("--output", "-o", default=OUTPUT_DIR, help=f"Output directory (default: {OUTPUT_DIR})")
+    parser.add_argument("--input-dir", help="Directory containing SSML input files")
+    parser.add_argument(
+        "--output-dir",
+        "--output",
+        "-o",
+        dest="output_dir",
+        help="Directory for generated MP3 files",
+    )
     args = parser.parse_args()
+
+    try:
+        settings = load_ssml_to_mp3_settings(require_azure=not args.dry_run)
+    except ConfigError as exc:
+        print(f"ERROR: {exc}")
+        sys.exit(1)
+
+    INPUT_DIR = args.input_dir or settings.input_dir
+    OUTPUT_DIR = args.output_dir or settings.output_dir
+    ALBUM = settings.album
+    ARTIST = settings.artist
+    USER_AGENT = settings.user_agent
+    SSML_LANG = settings.ssml_lang
+    VOICE_NAME = settings.voice_name
+    TITLE_ACRONYMS = settings.title_acronyms
+    MAX_CHUNK_CHARS = settings.max_chunk_chars
 
     repo_root = Path(__file__).resolve().parent.parent
     ssml_dir = repo_root / INPUT_DIR
-    output_dir = repo_root / args.output
+    output_dir = repo_root / OUTPUT_DIR
     output_dir.mkdir(exist_ok=True)
 
     # Collect files
@@ -435,7 +441,7 @@ def main():
     print(f"Found {len(ssml_files)} SSML file(s) to convert.\n")
 
     if not args.dry_run:
-        key, region = get_config()
+        key, region = settings.azure_tts_key, settings.azure_tts_region
         print(f"Region: {region}")
         print("Fetching access token...", end=" ", flush=True)
         token = fetch_access_token(key, region)
@@ -462,7 +468,7 @@ def main():
                 title = _title_from_ssml(ssml_path)
                 write_id3_tags(result, title, track, total_tracks)
                 size_kb = result.stat().st_size / 1024
-                print(f"    -> {args.output}/{result.name} ({size_kb:.0f} KB) [Track {track}/{total_tracks}]\n")
+                print(f"    -> {OUTPUT_DIR}/{result.name} ({size_kb:.0f} KB) [Track {track}/{total_tracks}]\n")
             success += 1
         else:
             failed += 1

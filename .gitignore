@@ -9,7 +9,6 @@ venv/
 env/
 ENV/
 .env
-.env.*
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
